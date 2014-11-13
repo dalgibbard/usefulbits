@@ -1,0 +1,81 @@
+#!/bin/bash
+
+## User variables
+# Host running the VM (Hostname/IP etc)
+REMOTE_HOST="work"
+# Port on which the local console is configured.
+# Port 9000 is default for VirtualBox
+RDP_PORT="9000"
+# Screen resolution to open the remote session with
+SCREEN_RES="1440x850"
+# Other arguments to pass to rdesktop
+RDESKTOP_ARGS=""
+
+## Binary locate
+RDESKTOP=`which rdesktop`
+if [ "x$RDESKTOP" = "x" ]; then
+	echo "Failed to locate rdesktop binary. Please ensure it's installed, and in your \$PATH".
+	exit 1
+fi
+SSH=`which ssh`
+if [ "x$SSH" = "x" ]; then
+	echo "Failed to locate ssh binary. Please ensure it's installed, and in your \$PATH".
+	exit 1
+fi
+
+## Functions
+
+test_endpoint(){
+	ping ${REMOTE_HOST} -c 1 -w 1 >/dev/null 2>&1
+	if [ $? = 0 ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+test_tunnel(){
+	if [ `ps -ef | grep "${SSH}" | grep '\-L' | grep "${RDP_PORT}" | grep -v 'grep' | grep -c "${REMOTE_HOST}"` -gt 0 ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+start_tunnel(){
+	echo "Starting SSH Tunnel to ${REMOTE_HOST} on port ${RDP_PORT} ..."
+	${SSH} -L${RDP_PORT}:localhost:${RDP_PORT} ${REMOTE_HOST} -N -f
+	if [ $? = 0 ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+start_rdesktop(){
+	${RDESKTOP} ${RDESKTOP_ARGS} -g $SCREEN_RES localhost:${RDP_PORT} & disown
+}
+
+### Main code
+
+test_endpoint
+if [ $? = 1 ]; then
+	echo "Cannot reach ${REMOTE_HOST} to initial tunnel. Is VPN up?"
+	exit 1
+fi
+test_tunnel
+if [ $? = 1 ]; then
+	start_tunnel
+	test_tunnel
+	if [ $? = 1 ]; then
+		echo "Failed to start SSH tunnel."
+		exit 1
+	else
+		echo "Tunnel connection initiated."
+	fi
+else
+	echo "SSH Tunnel already active."
+fi
+echo "Starting rdesktop session..."
+sleep 2
+start_rdesktop

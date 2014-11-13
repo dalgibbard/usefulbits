@@ -1,0 +1,86 @@
+#!/bin/bash
+#
+# This script connects to a pre-configured network.
+# Accepts single argument of the SSID (which is assumed to have a
+# relevant config file named: /etc/wpa_supplicant.d/<SSID>.conf) OR
+# the argument of '-l' to list the available configured networks.
+#
+ 
+SSID=$1
+ 
+# Check running as root:
+if [ ! `id -un` = "root" ]; then
+    echo "Must run as root."
+    exit 1
+fi
+ 
+# Check for available interface:
+IFACE=`iw dev | grep Interface | awk '{print$2}'`
+if [ "x$IFACE" = "x" ]; then
+    echo "Failed to find any available Wireless Network Adapters"
+    exit 1
+fi
+if [ `echo $IFACE | wc -w` -gt 1 ]; then
+    echo "Multiple wireless devices found: $IFACE"
+    echo -n "Please enter which interface you would like to use: "
+    read NEWIFACE
+    # Check that the user selected interface is valid!
+    if [ ! `echo $IFACE | grep -c "$NEWIFACE"` = 1 ]; then
+        echo " *** ERROR: Interface $NEWIFACE is invalid."
+        exit 1
+    else
+        IFACE=$NEWIFACE
+    fi
+fi
+ 
+# Check for relevant SSID Config file:
+if [ ! -d /etc/wpa_supplicant.d ]; then
+    echo "Config Directory '/etc/wpa_supplicant.d' is Missing"
+    exit 1
+fi
+if [ "x$SSID" = "x-l" ]; then
+    echo "Available Configured SSIDs:"
+    ls /etc/wpa_supplicant.d/ | sed -e 's/.conf//g'
+    exit 1
+fi
+if [ "x$SSID" = "x" ]; then
+    echo "Usage: $0 <SSID>"
+    echo "  --> Where SSID should be a pre-configured network ID"
+    echo "      in /etc/wpa_supplicant.d/<SSID>.conf"
+    exit 1
+fi
+if [ ! -f /etc/wpa_supplicant.d/$SSID.conf ]; then
+    echo "Configuration file /etc/wpa_supplicant.d/$SSID.conf not present."
+    exit 1
+fi
+ 
+# Identify relevant driver for use with WPA Supplicant - currently irrelevant, as mine is iwlwifi, which isn't in WPAsup...
+# Leaving this in anyway until I can do something clever with it.
+#DRIVER=`lshw -C network | grep "logical name\|configuration" | grep -A 1 $IFACE | tail -n 1 | egrep -o "driver=[0-9a-zA-Z]*" | #awk -F= '{print$2}'`
+#if [ "x$DRIVER" = "x" ]; then
+#   echo "Failed to identify a suitable wifi driver. Using 'wext'."
+#   DRIVER=wext
+#fi
+ 
+echo "Connecting to network: $1"
+ 
+# If network state is UP:
+killall wpa_supplicant
+killall dhclient
+if [ "`ip link show $IFACE | grep -c "state UP"`" = "1" ];then
+    ifconfig wlan1 down
+    sleep 1
+fi
+ 
+# If physical interface is DOWN:
+if [ ! `ip link show $iFACE | grep ',UP)'` ]; then
+    ip link set $IFACE up
+    if [ ! $? = 0 ]; then
+        echo "Failed to set interface $IFACE as UP"
+        exit 1
+    fi
+fi
+ 
+wpa_supplicant -B -D wext -i $IFACE -c /etc/wpa_supplicant.d/$SSID.conf
+sleep 5 # Replace with active check and timeout message
+dhclient $IFACE
