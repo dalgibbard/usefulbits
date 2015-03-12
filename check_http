@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# Drop in bash replacement using curl for the check_http nagios plugin; for use with cdbtest
+#
+if [ "x`which curl`" = "x" ]; then
+    echo "Curl not found."
+    exit 1
+fi
+
+usage(){
+    echo
+    echo "Usage: $0 -H <HOST> [-a <user:password>] [-p <PORT>] [-t <TIMEOUT>] [-u <URL_PATH>]"
+    echo -e "\t-H   Hostname to check"
+    echo -e "\t-a   Authentication Details (ie;  "user:password")"
+    echo -e "\t-p   Port [Default: 80]"
+    echo -e "\t-t   Timeout [Default: curl default]"
+    echo -e "\t-u   URL Path (eg. \"/index.html\")"
+    echo
+    exit 1
+}
+
+AUTH=""
+URLPATH=""
+
+OPTIND=1
+while getopts ":h?H:a:p:t:u:" opt; do
+    case "$opt" in
+        h) usage ;;
+        H) HOST="${OPTARG}" ;;
+        a) AUTH="${OPTARG}" ;;
+        p) PORT="${OPTARG}" ;;
+        t) TIMEOUT="${OPTARG}" ;;
+        u) URLPATH="${OPTARG}" ;;
+        :) echo "... ERROR: Option \"-${OPTARG}\" requires an argument"; usage ;;
+        *|\?) echo "... ERROR: Unknown Option \"-${OPTARG}\""; usage;;
+    esac
+done
+
+shift $((OPTIND-1))
+[ "$1" = "--" ] && shift
+if [ ! "x$@" = "x" ]; then
+    echo "... ERROR: Unknown Option \"$@\""
+    usage
+fi
+
+# Handle empty args
+if [ "x$HOST" = "x" ]; then
+    echo "... ERROR: Missing argument '-H <HOST>'"
+    usage
+fi
+
+# Mangle timeout into a curl arg
+if [ ! "x${TIMEOUT}" = "x" ]; then
+    TIMEOUT="-m $TIMEOUT"
+fi
+
+## Mangle the URL string:
+# Prepend http proto
+if [ ! "`echo $HOST | grep -c http`" = 1 ]; then
+    HOST="http://$HOST"
+fi
+# Check for URL_PATH on the end... Complain.
+if [ ! "x`echo $HOST | awk -F'/' '{print$4}'`" = "x" ]; then
+    echo "URL_PATH should be specified with the '-u' argument."
+    usage
+fi
+# Append Port
+if [ ! "x${PORT}" = "x" ]; then
+    if [ ! "`echo $HOST | egrep -c ":[0-9]*$"`" = "1" ]; then
+        HOST="$HOST:$PORT"
+    fi
+fi
+# Add auth
+if [ ! "x${AUTH}" = "x" ]; then 
+    httptype="`echo $HOST | awk -F'/' '{print$1}'`"
+    urlbase="`echo $HOST | awk -F'/' '{print$3}'`"
+    HOST="${httptype}//${AUTH}@${urlbase}"
+fi
+if [ "`echo $url | grep -ic "^https://"`" = "1" ]; then
+    curlopt="-k"
+else
+    curlopt=""
+fi
+if [ ! "x${URLPATH}" = "x" ]; then
+    # Strip end slash from current string if present:
+    HOST=`echo $HOST | sed -e 's@/$@@'`
+    if [ "`echo ${URLPATH} | grep -c '^/'`" = "1" ]; then
+        HOST="${HOST}${URLPATH}"
+    else
+        HOST="${HOST}/${URLPATH}"
+    fi
+fi
+
+curl -q --dump-header - ${curlopt} ${TIMEOUT} ${HOST} -o /dev/null 2>/dev/null| grep "^HTTP"
+ERR=${PIPESTATUS[0]}
+
+if [ $ERR = 0 ]; then
+    exit $ERR
+else
+    echo "Error - Curl failed with error code $ERR"
+fi
+
+
+#${HTTPCHECK} -a admin:i6bWc84bYD -H ${HOST} -p 5984 -t 20 -u /pim/ >/dev/null 2>&1; ERR=$?
+
