@@ -3,10 +3,10 @@
 # Script to get CouchDB DB Sizes in MB, and push them to graphite using cdb_to_graphite.py
 #
 
-pushscript=cdb_to_graphite.py
-graphite=`which $pushscript`
+user=myuser
+graphite=/usr/local/bin/cdb_to_graphite.py
 list=$1
-ssh_opts="-q -o ConnectTimeout=5 -l user -i /path/to/.ssh/id_rsa"
+ssh_opts="-q -o ConnectTimeout=5 -l ${user} -i /home/${user}/.ssh/id_rsa"
 
 if [ "x$graphite" = "x" ] ;then
     echo "Failed to locate $pushscript in \$PATH"
@@ -32,7 +32,9 @@ while read line; do
         echo "Failed to obtain DB Size from $line"
         continue
     fi
-    #echo $graphite $line $SIZE
-    $graphite $line $SIZE
+
+    submit="$graphite ${line} $SIZE"
+    echo "$submit"
+    $graphite $submit
 done < <(cat $list)
 
