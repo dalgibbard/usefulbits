@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/usr/bin/python
 
 #
 # Quick hacked together script for taking in two args (Remote System name, Remote DB Size), and dumping them into Graphite.
